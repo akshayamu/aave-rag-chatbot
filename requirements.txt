@@ -1,8 +1,18 @@
-ollama
-langchain
-langchain-community
-sentence-transformers
-faiss-cpu
+# Core
 streamlit
 python-dotenv
+
+# LangChain + Ecosystem
+langchain
+langchain-community
+langchain-groq
+
+# Embeddings
+ollama
+sentence-transformers
+
+# Vector DB
+faiss-cpu
+
+# Utils
 requests
