@@ -17,12 +17,12 @@ try:
 except Exception:
     load_vectorstore = None
 
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from config import GROQ_API_KEY, GROQ_LLM_MODEL, OLLAMA_EMBEDDING_MODEL
+from config import GROQ_API_KEY, GROQ_LLM_MODEL
 
 def _highlight_answer(answer: str, source_docs):
     full_text = " ".join([getattr(d, "page_content", "") for d in source_docs])
@@ -62,10 +62,8 @@ class AaveRAGPipeline:
             raise ValueError("GROQ_API_KEY missing. Set it in .env or via setup_groq_api_key().")
 
         try:
-            # ChatGroq may expect only model param
             self.llm = ChatGroq(model=GROQ_LLM_MODEL, temperature=0.0)
         except TypeError:
-            # fallback older param name
             self.llm = ChatGroq(groq_api_key=GROQ_API_KEY, model=GROQ_LLM_MODEL, temperature=0.0)
 
         self.vectorstore = self._create_or_load_index()
@@ -90,10 +88,9 @@ class AaveRAGPipeline:
         )
 
     def _create_or_load_index(self):
-        # Use project loader if any
         if load_vectorstore:
             try:
-                return load_vectorstore(path=self.model_path, model_name=OLLAMA_EMBEDDING_MODEL)
+                return load_vectorstore(path=self.model_path)
             except TypeError:
                 try:
                     return load_vectorstore(self.model_path)
@@ -103,8 +100,8 @@ class AaveRAGPipeline:
         idx_dir = Path(self.model_path)
         if idx_dir.exists() or Path(f"{self.model_path}.faiss").exists():
             try:
-                embed = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-                return FAISS.load_local(str(idx_dir), embed, allow_dangerous_deserialization=True)
+                embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+                return FAISS.load_local(str(idx_dir), embeddings, allow_dangerous_deserialization=True)
             except Exception:
                 pass
 
@@ -121,8 +118,8 @@ class AaveRAGPipeline:
 
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = splitter.split_documents(docs)
-        embed = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        vs = FAISS.from_documents(splits, embed)
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        vs = FAISS.from_documents(splits, embeddings)
         Path(self.model_path).mkdir(parents=True, exist_ok=True)
         vs.save_local(str(self.model_path))
         return vs
