@@ -2,29 +2,24 @@
 import sys
 import os
 
-# Add the parent directory to the Python path
+# ensure we can import project modules when run from src/
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from rag_pipeline import AaveRAGPipeline
 from setup_env import setup_groq_api_key
 from config import GROQ_API_KEY
+from rag_pipeline import AaveRAGPipeline
 
-# -------------------------
-# Streamlit Page Config
-# -------------------------
-st.set_page_config(
-    page_title="Aave RAG Chatbot v2 – Zero Trace",
-    page_icon="💬",
-    layout="wide"
-)
+# Streamlit page config must be the first Streamlit call
+st.set_page_config(page_title="Aave RAG Chatbot v2 – Zero Trace", page_icon="💬", layout="wide")
 
-# Custom CSS for better UI (fixed white text issue)
-st.markdown("""
-<style>
+# Fix white-text: answer box uses white background + black text (keeps previous working look)
+st.markdown(
+    """
+    <style>
     .answer-container {
-        background-color: #ffffff;   /* pure white background */
-        color: #000000;              /* black text */
+        background-color: #ffffff;
+        color: #000000;
         border-radius: 10px;
         padding: 20px;
         margin-top: 20px;
@@ -43,17 +38,14 @@ st.markdown("""
         height: 100%;
         background-color: #28a745;
     }
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# -------------------------
-# Title
-# -------------------------
 st.title("💬 Aave RAG Chatbot v2 – Zero Trace")
 
-# -------------------------
-# API Key Setup
-# -------------------------
+# API Key check (helpful locally)
 if "api_key_set" not in st.session_state:
     st.session_state.api_key_set = bool(GROQ_API_KEY)
 
@@ -65,90 +57,59 @@ if not st.session_state.api_key_set:
         st.experimental_rerun()
     st.stop()
 
-# -------------------------
-# Initialize Pipeline
-# -------------------------
+# Lazy load pipeline and cache resource
+@st.cache_resource(show_spinner=True)
+def load_pipeline():
+    return AaveRAGPipeline()
+
 try:
     with st.spinner("🔄 Loading Aave RAG Pipeline..."):
-        pipeline = AaveRAGPipeline()
+        pipeline = load_pipeline()
 except Exception as e:
     st.error(f"❌ Failed to load pipeline: {str(e)}")
     st.stop()
 
-# -------------------------
-# Main Input
-# -------------------------
 st.markdown("### ❓ Ask about Aave:")
 user_question = st.text_input("", placeholder="e.g., How do I supply assets to Aave?")
 
-# -------------------------
-# Process Query
-# -------------------------
 if user_question:
     with st.spinner("🤔 Thinking..."):
         try:
             result = pipeline.ask(user_question)
-
-            # Answer
-            st.markdown("### ✅ Answer:")
-            st.markdown(
-                f"<div class='answer-container'>{result['answer']}</div>",
-                unsafe_allow_html=True
-            )
-
-            # Confidence
-            confidence_percentage = min(100, max(0, int(result.get("confidence", 0.75) * 100)))
-            st.markdown("### 📊 Confidence:")
-            st.markdown(f"**{confidence_percentage}%**")
-
-            st.markdown(
-                f"""
-                <div class="confidence-meter">
-                    <div class="confidence-level" style="width: {confidence_percentage}%"></div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            # Sources
-            with st.expander("📂 Source Documents"):
-                if result.get("source_documents"):
-                    for i, doc in enumerate(result["source_documents"]):
-                        st.markdown(f"**Document {i+1}:**")
-                        st.text(doc.page_content[:1000])  # limit for performance
-                        st.markdown("---")
-                else:
-                    st.info("No source documents available.")
-
         except Exception as e:
             st.error(f"⚠️ Error while processing your question: {str(e)}")
+            result = None
 
-# -------------------------
-# Sidebar Info
-# -------------------------
-with st.sidebar:
-    st.markdown("## ℹ️ About")
-    st.markdown("""
-    This chatbot uses Retrieval-Augmented Generation (RAG) to answer questions about **Aave**.
-    
-    **Stack:**
-    - Ollama (all-minilm) → Embeddings
-    - Groq API (llama-3.1-8b-instant) → LLM
-    - FAISS → Vector storage
-    - LangChain → Orchestration
-    """)
+    if result:
+        # Show answer
+        st.markdown("### ✅ Answer:")
+        st.markdown(f"<div class='answer-container'>{result['answer']}</div>", unsafe_allow_html=True)
 
-    st.markdown("## 🔎 How it works")
-    st.markdown("""
-    1. Your question → Embedded with Ollama  
-    2. Retrieve relevant chunks from FAISS  
-    3. Groq LLM → Generates an answer  
-    4. Sources shown for transparency  
-    """)
+        # Confidence (normalize to percent)
+        raw_conf = result.get("confidence", 0.0)
+        try:
+            if raw_conf <= 1.0:
+                conf_pct = int(raw_conf * 100)
+            else:
+                conf_pct = int(raw_conf)
+        except Exception:
+            conf_pct = 0
 
-    st.markdown("## 🔒 Privacy")
-    st.markdown("""
-    - No external data storage  
-    - API keys stay in `.env`  
-    - Local FAISS index  
-    """)
+        st.markdown("### 📊 Confidence:")
+        # show progress (0..1 float expected) — divide by 100 to get 0..1
+        try:
+            st.progress(conf_pct / 100)
+        except Exception:
+            # fallback: text only
+            pass
+        st.markdown(f"**{conf_pct}%**")
+
+        # Source documents
+        with st.expander("📂 Source Documents"):
+            if result.get("source_documents"):
+                for i, doc in enumerate(result["source_documents"], start=1):
+                    st.markdown(f"**Document {i}:**")
+                    st.text(getattr(doc, "page_content", "")[:1000])
+                    st.markdown("---")
+            else:
+                st.info("No source documents available.")
