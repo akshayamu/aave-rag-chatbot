@@ -1,8 +1,9 @@
-langchain
-langchain-community
-langchain-groq
-sentence-transformers
-faiss-cpu
-python-dotenv
-streamlit
-pypdf
+langchain>=0.2,<0.3
+langchain-community>=0.2,<0.3
+langchain-groq>=0.1.6
+groq>=0.9.0
+sentence-transformers>=2.6.1
+faiss-cpu>=1.7.4
+pypdf>=4.2
+python-dotenv>=1.0.1
+streamlit>=1.32
