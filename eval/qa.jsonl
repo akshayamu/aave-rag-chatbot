@@ -1,0 +1,5 @@
+{"id":"q01","question":"What triggers liquidation in Aave?","answer":"Liquidation is triggered when a user's health factor falls below 1.","source_doc":"Aave Protocol Overview.pdf","source_section":"Liquidation"}
+{"id":"q02","question":"What is the health factor?","answer":"The health factor measures the safety of a user's position.","source_doc":"Aave Protocol Overview.pdf","source_section":"Risk Parameters"}
+{"id":"q03","question":"What is collateral in Aave?","answer":"Collateral is supplied assets used to secure borrowed funds.","source_doc":"Aave Protocol Overview.pdf","source_section":"Collateral"}
+{"id":"q04","question":"What is loan-to-value?","answer":"Loan-to-value defines how much can be borrowed against collateral.","source_doc":"Aave Protocol Overview.pdf","source_section":"LTV"}
+{"id":"q05","question":"What happens during liquidation?","answer":"A portion of debt is repaid in exchange for collateral.","source_doc":"Aave Protocol Overview.pdf","source_section":"Liquidation"}

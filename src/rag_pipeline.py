@@ -1,9 +1,12 @@
 import os
 import re
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv is optional for evaluation
 
-load_dotenv()
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +25,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from config import GROQ_API_KEY, GROQ_LLM_MODEL
+from src.config import GROQ_API_KEY, GROQ_LLM_MODEL
 
 def _highlight_answer(answer: str, source_docs):
     full_text = " ".join([getattr(d, "page_content", "") for d in source_docs])
