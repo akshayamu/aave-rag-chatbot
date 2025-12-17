@@ -1,159 +1,174 @@
 import os
-import re
 from pathlib import Path
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # dotenv is optional for evaluation
+from dotenv import load_dotenv
 
-
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
-
-try:
-    from document_processor import load_vectorstore
-except Exception:
-    load_vectorstore = None
-
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 
-from src.config import GROQ_API_KEY, GROQ_LLM_MODEL
+# ======================================================
+# Environment
+# ======================================================
+load_dotenv()
 
-def _highlight_answer(answer: str, source_docs):
-    full_text = " ".join([getattr(d, "page_content", "") for d in source_docs])
-    sentences = re.split(r"[.!?]+\s*", full_text)
-    answer_words = set(answer.lower().split())
-    best_match = ""
-    best_score = 0.0
-    for s in sentences:
-        s = s.strip()
-        if len(s) < 10:
-            continue
-        s_words = set(s.lower().split())
-        if not s_words:
-            continue
-        inter = len(answer_words.intersection(s_words))
-        union = len(answer_words.union(s_words))
-        score = (inter / union) if union > 0 else 0.0
-        if score > best_score:
-            best_score = score
-            best_match = s
-    if best_score > 0.05 and best_match:
-        try:
-            pattern = re.escape(best_match.strip())
-            highlighted = re.sub(pattern, f"**{best_match.strip()}**", answer, flags=re.IGNORECASE)
-            return highlighted, best_score
-        except Exception:
-            return answer, best_score
-    return answer, best_score
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant")
 
+if not GROQ_API_KEY:
+    raise RuntimeError("GROQ_API_KEY not set")
+
+# ======================================================
+# Helper: lexical grounding score
+# ======================================================
+def grounding_score(answer: str, docs) -> float:
+    if not docs or not answer:
+        return 0.0
+
+    context = " ".join(d.page_content.lower() for d in docs)
+    tokens = [t for t in answer.lower().split() if len(t) > 3]
+
+    if not tokens:
+        return 0.0
+
+    hits = sum(1 for t in tokens if t in context)
+    return min(hits / len(tokens), 1.0)
+
+# ======================================================
+# Main RAG Pipeline
+# ======================================================
 class AaveRAGPipeline:
-    def __init__(self, model_path="models/aave_faiss_index", k=3, data_folder="data"):
-        self.model_path = model_path
+    """
+    Conservative, evaluation-driven RAG pipeline
+    """
+
+    def __init__(self, k: int = 5):
+        base_dir = Path(__file__).resolve().parents[1]
+
+        self.data_dir = base_dir / "data"
+        self.index_dir = base_dir / "models" / "aave_faiss_index"
         self.k = k
-        self.data_folder = Path(data_folder)
 
-        if not GROQ_API_KEY:
-            raise ValueError("GROQ_API_KEY missing. Set it in .env or via setup_groq_api_key().")
+        print(f"[RAG] Data directory: {self.data_dir}")
+        print(f"[RAG] Index directory: {self.index_dir}")
 
-        try:
-            self.llm = ChatGroq(model=GROQ_LLM_MODEL, temperature=0.0)
-        except TypeError:
-            self.llm = ChatGroq(groq_api_key=GROQ_API_KEY, model=GROQ_LLM_MODEL, temperature=0.0)
-
-        self.vectorstore = self._create_or_load_index()
-
-        self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.k})
-        self.prompt = PromptTemplate(
-            template=(
-                "You are an assistant for answering questions about Aave Protocol.\n"
-                "Use the provided context to give accurate answers. If the context does not contain the answer, say you don't know.\n\n"
-                "Context:\n{context}\n\n"
-                "Question: {question}\n\n"
-                "Answer:"
-            ),
-            input_variables=["context", "question"],
-        )
-        self.qa_chain = RetrievalQA.from_chain_type(
-            llm=self.llm,
-            retriever=self.retriever,
-            chain_type="stuff",
-            chain_type_kwargs={"prompt": self.prompt},
-            return_source_documents=True,
+        # LLM
+        self.llm = ChatGroq(
+            api_key=GROQ_API_KEY,
+            model=GROQ_LLM_MODEL,
+            temperature=0.0
         )
 
-    def _create_or_load_index(self):
-        if load_vectorstore:
-            try:
-                return load_vectorstore(path=self.model_path)
-            except TypeError:
-                try:
-                    return load_vectorstore(self.model_path)
-                except Exception:
-                    pass
+        # Embeddings
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
 
-        idx_dir = Path(self.model_path)
-        if idx_dir.exists() or Path(f"{self.model_path}.faiss").exists():
-            try:
-                embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-                return FAISS.load_local(str(idx_dir), embeddings, allow_dangerous_deserialization=True)
-            except Exception:
-                pass
+        # Vector store
+        self.vectorstore = self._load_or_build_index()
+        self.retriever = self.vectorstore.as_retriever(
+            search_kwargs={"k": self.k}
+        )
 
-        if not self.data_folder.exists():
-            raise FileNotFoundError(f"Vectorstore '{self.model_path}' not found and data folder '{self.data_folder}' missing.")
+    # --------------------------------------------------
+    # Indexing
+    # --------------------------------------------------
+    def _load_or_build_index(self):
+        if self.index_dir.exists():
+            vs = FAISS.load_local(
+                str(self.index_dir),
+                self.embeddings,
+                allow_dangerous_deserialization=True
+            )
+            print(f"[RAG] Loaded FAISS index ({vs.index.ntotal} vectors)")
+            return vs
 
-        pdfs = [p for p in self.data_folder.iterdir() if p.suffix.lower() == ".pdf"]
-        if not pdfs:
-            raise FileNotFoundError(f"No PDFs in '{self.data_folder}' to build vectorstore.")
+        docs = self._load_documents()
 
-        docs = []
-        for f in pdfs:
-            docs.extend(PyPDFLoader(str(f)).load())
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+        chunks = splitter.split_documents(docs)
 
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        splits = splitter.split_documents(docs)
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        vs = FAISS.from_documents(splits, embeddings)
-        Path(self.model_path).mkdir(parents=True, exist_ok=True)
-        vs.save_local(str(self.model_path))
+        vs = FAISS.from_documents(chunks, self.embeddings)
+        self.index_dir.mkdir(parents=True, exist_ok=True)
+        vs.save_local(str(self.index_dir))
+
+        print(f"[RAG] Built FAISS index ({vs.index.ntotal} vectors)")
         return vs
 
-    def ask(self, question: str):
-        if not question or not question.strip():
-            return {"answer": "⚠️ Please enter a valid question.", "confidence": 0.0, "source_documents": []}
+    def _load_documents(self):
+        if not self.data_dir.exists():
+            raise RuntimeError("data/ directory missing")
 
-        result = self.qa_chain({"query": question})
-        answer = result.get("result", "")
-        source_docs = result.get("source_documents", []) or []
+        documents = []
+        print("[RAG] Loading documents…")
 
-        scores = []
-        for d in source_docs:
-            md = getattr(d, "metadata", {}) or {}
-            for key in ("score", "similarity", "cosine_score", "similarity_score", "query_score"):
-                if key in md and md[key] is not None:
-                    try:
-                        scores.append(float(md[key]))
-                    except Exception:
-                        pass
+        for file in self.data_dir.iterdir():
+            if file.suffix.lower() == ".pdf":
+                docs = PyPDFLoader(str(file)).load()
+            elif file.suffix.lower() == ".txt":
+                docs = TextLoader(str(file), encoding="utf-8").load()
+            else:
+                continue
 
-        confidence = max(scores) if scores else (0.8 if source_docs else 0.4)
-        if confidence > 1 and confidence <= 100:
-            confidence = confidence / 100.0
-        confidence = max(0.0, min(1.0, float(confidence)))
+            for d in docs:
+                text = d.page_content.strip()
+                if len(text) < 50:
+                    continue
 
-        highlighted_answer, match_score = _highlight_answer(answer, source_docs)
-        confidence = max(confidence, float(match_score))
+                d.metadata["source"] = file.name
+                documents.append(d)
 
-        return {"answer": highlighted_answer, "confidence": confidence, "source_documents": source_docs}
+        if not documents:
+            raise RuntimeError("No valid documents found")
 
+        print(f"[RAG] Loaded {len(documents)} chunks")
+        return documents
+
+    # --------------------------------------------------
+    # Query
+    # --------------------------------------------------
     def query(self, question: str):
-        return self.ask(question)
+        docs = self.retriever.get_relevant_documents(question)
+        print(f"[RAG] Retrieved {len(docs)} chunks")
+
+        if not docs:
+            return {
+                "answer": "I do not know.",
+                "confidence": 0.0,
+                "source_documents": []
+            }
+
+        context = "\n\n".join(d.page_content for d in docs)
+
+        prompt = f"""
+You are an expert assistant for the Aave protocol.
+
+Answer the question using ONLY the context below.
+You may paraphrase or infer if the information is clearly implied.
+Do NOT introduce unsupported facts.
+If the context does not support an answer, say "I do not know".
+
+Context:
+{context}
+
+Question:
+{question}
+
+Answer in 2–3 sentences.
+"""
+
+        response = self.llm.invoke(prompt)
+        answer = response.content if hasattr(response, "content") else str(response)
+
+        score = grounding_score(answer, docs)
+        confidence = max(score, 0.35)
+
+        return {
+            "answer": answer,
+            "confidence": confidence,
+            "source_documents": docs
+        }
