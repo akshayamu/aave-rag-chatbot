@@ -1,12 +1,3 @@
-# Python cache
-__pycache__/
-*.pyc
-
-# Environment
-.env
-
-# Vector indexes / generated artifacts
-*.faiss
-*.pkl
 models/
-
+__pycache__/
+.env
