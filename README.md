@@ -114,7 +114,60 @@ Example questions:
 ---
 
 ## How to Run Locally
-
 ### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
+
+2. Set environment variables
+export GROQ_API_KEY=your_key_here
+
+
+(Windows PowerShell)
+
+setx GROQ_API_KEY "your_key_here"
+
+3. Run the app
+streamlit run src/app.py
+
+Project Focus
+
+This project prioritizes measurable correctness over prompt tricks.
+It demonstrates how to build RAG systems that are:
+
+Evaluated
+
+Interpretable
+
+Honest about uncertainty
+
+Suitable for real-world deployment
+
+
+---
+
+# 2️⃣ GIT COMMANDS — SAFE & CORRECT
+
+Run these **from the project root**.
+
+### Step 1 — Check status
+```bash
+git status
+
+## Evaluation
+
+The RAG system is evaluated on a curated question set derived from official
+Aave documentation.
+
+### Metrics
+
+| Metric | Value |
+|------|------|
+| Retrieval hit-rate@k | XX % |
+| Citation faithfulness | XX % |
+| Latency p50 | 338 ms |
+| Latency p95 | 5333 ms |
+
+Latency is measured end-to-end (retrieval + generation). Higher p95 latency
+reflects LLM inference variability and cold starts.
+
+
