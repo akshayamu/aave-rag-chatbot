@@ -10,6 +10,9 @@ import csv
 import numpy as np
 from src.rag_pipeline import AaveRAGPipeline
 
+# ------------------------------
+# Configuration
+# ------------------------------
 K = 5
 rag = AaveRAGPipeline(k=K)
 
@@ -18,6 +21,9 @@ out_path = "eval/results.csv"
 
 rows = []
 
+# ------------------------------
+# Evaluation loop
+# ------------------------------
 with open(qa_path, "r", encoding="utf-8") as f:
     for line in f:
         if not line.strip():
@@ -30,34 +36,38 @@ with open(qa_path, "r", encoding="utf-8") as f:
         # ------------------------------
         start = time.time()
         result = rag.query(ex["question"])
+        latency_ms = (time.time() - start) * 1000
+
         answer = result["answer"]
         docs = result["source_documents"]
-        latency = (time.time() - start) * 1000  # ms
 
         # ------------------------------
-        # Retrieval metrics
+        # Retrieval metrics (Recall@K, MRR)
         # ------------------------------
         sources = [d.metadata.get("source") for d in docs]
 
         hit = int(ex["source_doc"] in sources)
+        recall_k = hit  # single ground-truth document
+
         rank = sources.index(ex["source_doc"]) + 1 if hit else None
-        mrr = 1 / rank if rank else 0
-        precision = 1 / K if hit else 0
+        mrr = 1.0 / rank if rank else 0.0
 
         # ------------------------------
-        # Faithfulness (simple, strict)
+        # Faithfulness / Groundedness
         # ------------------------------
-        faithful = int(
-            any(ex["answer"].lower() in d.page_content.lower() for d in docs)
+        grounded = int(
+            any(
+                ex["answer"].lower() in d.page_content.lower()
+                for d in docs
+            )
         )
 
         rows.append({
             "id": ex["id"],
-            "hit@5": hit,
-            "precision@5": precision,
-            "mrr": mrr,
-            "faithful": faithful,
-            "latency_ms": round(latency, 2)
+            "recall@5": recall_k,
+            "mrr": round(mrr, 4),
+            "grounded": grounded,
+            "latency_ms": round(latency_ms, 2),
         })
 
 # ------------------------------

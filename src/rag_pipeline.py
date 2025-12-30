@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 
 # ======================================================
@@ -132,7 +132,7 @@ class AaveRAGPipeline:
     # Query
     # --------------------------------------------------
     def query(self, question: str):
-        docs = self.retriever.get_relevant_documents(question)
+        docs = self.retriever.invoke(question)
         print(f"[RAG] Retrieved {len(docs)} chunks")
 
         if not docs:
