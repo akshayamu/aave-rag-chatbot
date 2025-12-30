@@ -52,9 +52,13 @@ Answer + Confidence + Citations
 
 ---
 
+
+
 ## Evaluation
 
-This project includes a **formal evaluation pipeline**, not just a demo UI.
+The RAG pipeline is evaluated using information-retrieval metrics (Recall@K, MRR) and answer groundedness to detect hallucinations.  
+Evaluation is run end-to-end over real queries with latency tracking, and results are exported to CSV for analysis.
+
 
 ### Evaluation Setup
 
