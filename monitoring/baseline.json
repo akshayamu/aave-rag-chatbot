@@ -1,0 +1,6 @@
+{
+  "recall@5_mean": 0.8,
+  "mrr_mean": 0.2666,
+  "grounded_rate": 0.0,
+  "latency_p95_ms": 12168.53
+}
