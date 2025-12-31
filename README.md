@@ -50,7 +50,21 @@ Groq LLM (LLaMA-3.1-8B)
 ↓  
 Answer + Confidence + Citations  
 
----
+--## System Architecture
+
+This project is designed as a production-style Retrieval-Augmented Generation (RAG) system
+with clear separation between offline ingestion, online query execution, evaluation,
+and monitoring.
+
+![RAG System Architecture](diagrams/rag_system_architecture.png)
+
+## Evaluation & Monitoring
+
+The system is continuously evaluated using retrieval, grounding, and latency metrics.
+Baseline snapshots are used to detect quality and performance drift over time.
+
+![RAG Evaluation and Monitoring](diagrams/rag_evaluation_monitoring.png)
+-
 
 
 
