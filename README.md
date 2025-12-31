@@ -1,13 +1,9 @@
-# Aave RAG Chatbot — Evaluation-Driven Retrieval-Augmented Generation
+## Overview
 
-An **evaluation-driven Retrieval-Augmented Generation (RAG) chatbot** built on
-official **Aave protocol documentation**. The system emphasizes **grounded,
-citation-backed answers**, explicit **uncertainty handling**, and **measured
-latency**, rather than prompt engineering.
-
-This project is designed as a **portfolio-grade RAG system**, demonstrating
-best practices in retrieval evaluation, faithfulness checks, and transparent
-system behavior.
+This project implements a production-style Retrieval-Augmented Generation (RAG) system
+designed for financial research. The system emphasizes measurable retrieval quality,
+hallucination detection, latency awareness, and continuous monitoring to ensure reliability
+over time.
 
 ---
 
