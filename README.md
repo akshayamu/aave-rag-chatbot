@@ -34,6 +34,7 @@ filtered during ingestion.
 
 ---
 
+
 ## Architecture
 
 Aave Docs  
@@ -129,7 +130,29 @@ Example questions:
 - What happens when the health factor drops?
 - What is the role of liquidators in Aave?
 
----
+-
+## Latency & Cost Tradeoffs
+Total Latency
+= Retrieval latency
++ Prompt assembly
++ LLM inference (dominant)
+
+
+The system is designed with explicit latency and cost considerations.
+
+**Latency profile**
+- End-to-end latency is dominated by LLM inference.
+- Retrieval via FAISS is low-latency and does not materially impact p95.
+- Latency is tracked using p50 and p95 to capture tail behavior.
+
+**Cost drivers**
+- Primary cost driver is LLM token usage.
+- Embedding generation and vector search are one-time or low-cost operations.
+
+**Design tradeoffs**
+- Top-K retrieval is tuned to balance recall against prompt length, latency, and cost.
+- Evaluation and drift detection are performed offline to avoid impacting user-facing latency.
+--
 
 ## How to Run Locally
 ### 1. Install dependencies
